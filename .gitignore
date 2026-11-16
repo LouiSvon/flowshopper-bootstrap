@@ -1,0 +1,19 @@
+# environnements et dépendances
+.venv/
+node_modules/
+__pycache__/
+.ipynb_checkpoints/
+
+# données sous licence ou volumineuses : à télécharger (voir README)
+ai/data/
+web/data/events.jsonl
+web/data/e2e-events.jsonl
+
+# sorties de tests
+web/test-results/
+web/playwright-report/
+web/coverage/
+.env
+.env.*
+!.env.example
+.DS_Store

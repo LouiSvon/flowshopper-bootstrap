@@ -1,0 +1,222 @@
+openapi: 3.1.0
+info:
+  title: Flowshopper interface contract
+  version: 0.1.0-draft
+  description: |
+    BROUILLON (C2). Contrat entre l'équipe Web et l'équipe AI. Il décrit ce que chaque équipe attend de l'autre ;
+    il n'impose rien d'autre. Toute modification passe par docs/decisions.md.
+    Partie "web" : implémentée dans web/ (voir tests). Partie "agent" : proposition, non implémentée.
+servers:
+  - url: http://localhost:3000
+tags:
+  - name: web
+    description: Implémenté côté Web
+  - name: agent
+    description: Proposition à valider par les deux équipes
+paths:
+  /api/catalog:
+    get:
+      tags: [web]
+      summary: Liste paginée du catalogue (filtres q et category)
+      parameters:
+        - { name: q, in: query, schema: { type: string } }
+        - { name: category, in: query, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 24 } }
+        - { name: offset, in: query, schema: { type: integer, minimum: 0, default: 0 } }
+      responses:
+        '200':
+          description: Page de produits
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [total, limit, offset, items, categories]
+                properties:
+                  total: { type: integer }
+                  limit: { type: integer }
+                  offset: { type: integer }
+                  categories: { type: array, items: { type: string } }
+                  items: { type: array, items: { $ref: '#/components/schemas/Product' } }
+  /api/catalog/{id}:
+    get:
+      tags: [web]
+      summary: Fiche d'un produit (outil de l'agent get_product)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, pattern: '^FS-[0-9]{4}$' } }
+      responses:
+        '200': { description: Produit, content: { application/json: { schema: { $ref: '#/components/schemas/Product' } } } }
+        '404': { $ref: '#/components/responses/Error' }
+  /api/events:
+    post:
+      tags: [web]
+      summary: Reçoit un lot d'événements (sendBeacon). Idempotent par event_id.
+      requestBody:
+        required: true
+        content:
+          application/json: { schema: { $ref: '#/components/schemas/EventBatch' } }
+      responses:
+        '202': { description: Accepté, content: { application/json: { schema: { type: object, properties: { accepted: { type: integer }, duplicates: { type: integer } } } } } }
+        '400': { $ref: '#/components/responses/Error' }
+  /api/checkout:
+    post:
+      tags: [web]
+      summary: Crée une commande (prix lus côté serveur) et une session Stripe en mode test
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [items]
+              properties:
+                items:
+                  type: array
+                  minItems: 1
+                  maxItems: 50
+                  items:
+                    type: object
+                    required: [product_id, quantity]
+                    properties:
+                      product_id: { type: string }
+                      quantity: { type: integer, minimum: 1, maximum: 20 }
+      responses:
+        '201': { description: Commande créée, content: { application/json: { schema: { type: object, properties: { order_id: { type: string }, checkout_url: { type: string, format: uri } } } } } }
+        '400': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+        '503': { $ref: '#/components/responses/Error' }
+  /webhooks/stripe:
+    post:
+      tags: [web]
+      summary: Webhook Stripe (signature vérifiée sur le corps brut). Seule source de vérité du paiement.
+      parameters:
+        - { name: stripe-signature, in: header, required: true, schema: { type: string } }
+      requestBody: { required: true, content: { application/json: { schema: { type: object } } } }
+      responses:
+        '200': { description: Reçu }
+        '400': { $ref: '#/components/responses/Error' }
+  /api/orders/{id}:
+    get:
+      tags: [web]
+      summary: État d'une commande (le temps réel passe par WebSocket /ws?order={id}, message order.confirmed)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: Commande, content: { application/json: { schema: { $ref: '#/components/schemas/Order' } } } }
+        '404': { $ref: '#/components/responses/Error' }
+  /agent/sessions:
+    post:
+      tags: [agent]
+      summary: Démarre une tâche de l'agent (ex. "prépare mes courses de la semaine")
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [message]
+              properties:
+                message: { type: string, maxLength: 2000 }
+                user_id: { type: string, description: "Pseudonyme, jamais de nom ni d'e-mail" }
+                budget_bells: { type: integer, minimum: 0 }
+      responses:
+        '201': { description: Session créée, content: { application/json: { schema: { type: object, properties: { session_id: { type: string } } } } } }
+  /agent/sessions/{id}/stream:
+    get:
+      tags: [agent]
+      summary: Flux Server-Sent Events des étapes de l'agent, lisible d'un coup d'oeil par le villageois
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: Flux text/event-stream ; chaque événement `data:` est un AgentEvent
+          content:
+            text/event-stream: { schema: { $ref: '#/components/schemas/AgentEvent' } }
+  /agent/sessions/{id}/confirm:
+    post:
+      tags: [agent]
+      summary: Le villageois valide ou refuse une action proposée (aucun achat sans confirmation)
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [step_id, approved]
+              properties: { step_id: { type: string }, approved: { type: boolean } }
+      responses:
+        '204': { description: Pris en compte }
+  /agent/sessions/{id}/stop:
+    post:
+      tags: [agent]
+      summary: Arrêt immédiat demandé par le villageois
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '204': { description: Agent arrêté }
+components:
+  responses:
+    Error:
+      description: Erreur
+      content: { application/json: { schema: { type: object, required: [error], properties: { error: { type: string } } } } }
+  schemas:
+    Product:
+      type: object
+      required: [id, name, brand, category, price_bells, stock]
+      properties:
+        id: { type: string, pattern: '^FS-[0-9]{4}$' }
+        name: { type: string }
+        brand: { type: string }
+        category: { type: string }
+        subcategory: { type: string }
+        description: { type: string }
+        price_bells: { type: integer }
+        stock: { type: [integer, 'null'] }
+        allergens: { type: string }
+        labels: { type: string }
+        nutriscore: { type: string }
+      additionalProperties: true
+    Event:
+      type: object
+      required: [event_id, type, ts, session_id]
+      additionalProperties: false
+      properties:
+        event_id: { type: string, format: uuid }
+        type: { enum: [product_viewed, add_to_cart, remove_from_cart, checkout_started] }
+        ts: { type: string, format: date-time }
+        session_id: { type: string, format: uuid }
+        product_id: { type: string, pattern: '^FS-[0-9]{4}$' }
+        props: { type: object, maxProperties: 10 }
+    EventBatch:
+      type: object
+      required: [events]
+      additionalProperties: false
+      properties:
+        events: { type: array, minItems: 1, maxItems: 100, items: { $ref: '#/components/schemas/Event' } }
+    Order:
+      type: object
+      required: [id, status, items, total_bells]
+      properties:
+        id: { type: string }
+        status: { enum: [pending, paid] }
+        total_bells: { type: integer }
+        paid_at: { type: string, format: date-time }
+        items:
+          type: array
+          items:
+            type: object
+            properties: { product_id: { type: string }, name: { type: string }, unit_price_bells: { type: integer }, quantity: { type: integer } }
+    AgentEvent:
+      description: |
+        Une étape de la boucle de l'agent. `summary` est une phrase courte pour le villageois ;
+        `detail` est facultatif (dépliable) pour ne pas noyer l'écran.
+      type: object
+      required: [step_id, type, ts, summary]
+      properties:
+        step_id: { type: string }
+        type: { enum: [understood, tool_call, tool_result, proposal, needs_confirmation, refused, done, error, stopped] }
+        ts: { type: string, format: date-time }
+        summary: { type: string, maxLength: 200 }
+        tool: { enum: [search_catalog, get_product, recommend, add_to_cart, propose_checkout] }
+        detail: { type: object }
