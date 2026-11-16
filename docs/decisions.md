@@ -26,6 +26,7 @@ Une décision qui change le contrat (`docs/openapi.yaml`) est faite dans le mêm
 | D8 | L'agent n'achète jamais seul : tout achat passe par `needs_confirmation` | Action irréversible et visible : le villageois valide | à valider (AI) |
 | D9 | Flux de l'agent en Server-Sent Events, un `AgentEvent` court par étape (`summary` ≤ 200 car., `detail` dépliable) | Lecture « d'un coup d'oeil » sans noyer l'écran ; SSE suffit, le flux est à sens unique | à valider (Web + AI) |
 | D10 | Données MovieLens et `orders.csv` hors dépôt | Licence MovieLens (pas de redistribution) et taille ; voir README | décidé |
+| D11 | Commandes et événements déjà vus en mémoire, sans limite de débit (seulement 10 000 commandes max, lots de 100 événements max) | Bootstrap : à remplacer par une base de données et un rate limit avant toute mise en ligne ; un webhook pour une commande inconnue répond 404 pour que Stripe relivre | décidé, provisoire |
 
 ## Désaccords ouverts
 

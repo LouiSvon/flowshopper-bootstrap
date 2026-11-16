@@ -47,7 +47,11 @@ export function createApp({
     if (event.type === 'checkout.session.completed' || event.type === 'checkout.session.async_payment_succeeded') {
       const session = event.data.object;
       if (session.payment_status === 'paid') {
-        const { changed, order } = orders.markPaid(session.metadata?.order_id, event.id);
+        const { changed, order, unknown } = orders.markPaid(session.metadata?.order_id, event.id);
+        if (unknown) {
+          console.error(`webhook ${event.id}: unknown order ${session.metadata?.order_id}`);
+          return res.status(404).json({ error: 'unknown order' });
+        }
         if (changed) realtime.publish(order.id, { type: 'order.confirmed', order_id: order.id, status: 'paid', paid_at: order.paid_at });
       }
     }
@@ -74,7 +78,13 @@ export function createApp({
       if (!stripe) throw httpError(503, 'payments not configured (set STRIPE_SECRET_KEY, test mode only)');
       if (!stripeSecretKey.startsWith('sk_test_')) throw httpError(503, 'refusing to run with a non-test Stripe key');
       const order = orders.create(req.body?.items, byId);
-      const session = await createCheckoutSession(stripe, order, baseUrl);
+      let session;
+      try {
+        session = await createCheckoutSession(stripe, order, baseUrl);
+      } catch (e) {
+        orders.delete(order.id); // pas de commande orpheline si Stripe échoue
+        throw e;
+      }
       res.status(201).json({ order_id: order.id, checkout_url: session.url });
     } catch (e) {
       next(e);

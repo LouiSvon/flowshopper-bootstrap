@@ -42,6 +42,10 @@ function openDetail(p) {
   state.current = p;
   $('detail-title').textContent = p.name;
   $('detail-body').textContent = p.description;
+  const inCart = state.cart.get(p.id)?.quantity ?? 0;
+  const max = Math.min(20, p.stock ?? 20);
+  $('detail-add').disabled = inCart >= max;
+  $('detail-add').textContent = p.stock === 0 ? 'Out of stock' : inCart >= max ? 'Maximum quantity in cart' : 'Add to cart';
   $('detail-price').textContent = p.price_bells;
   $('detail').showModal();
   track('product_viewed', p.id);

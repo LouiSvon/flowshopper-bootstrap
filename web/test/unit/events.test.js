@@ -13,7 +13,7 @@ test('un lot valide est stocké, même envoyé en text/plain comme le fait sendB
   const e = ev();
   const r = await post(ctx, { events: [e] }, 'text/plain;charset=UTF-8');
   assert.equal(r.status, 202);
-  assert.deepEqual(await r.json(), { ok: true, accepted: 1, duplicates: 0 });
+  assert.deepEqual(await r.json(), { ok: true, accepted: 1, duplicates: 0, rejected: 0 });
   const lines = readFileSync(join(ctx.dir, 'events.jsonl'), 'utf8').trim().split('\n').map(JSON.parse);
   assert.equal(lines.length, 1);
   assert.equal(lines[0].event_id, e.event_id);
@@ -49,4 +49,20 @@ test('le store relit son fichier au redémarrage (pas de doublon après restart)
   const { EventStore } = await import('../../src/events.js');
   const again = new EventStore(join(ctx.dir, 'events.jsonl'));
   assert.equal(again.add(body).duplicates, 1);
+});
+
+test('un produit inconnu n\'écarte que son événement et ne bloque pas un renvoi', async (t) => {
+  const ctx = await start(); t.after(ctx.stop);
+  const good = ev(), bad = ev({ product_id: 'FS-9999' });
+  const r = await (await post(ctx, { events: [good, bad] })).json();
+  assert.deepEqual([r.accepted, r.rejected], [1, 1]);
+  const again = await (await post(ctx, { events: [good] })).json();
+  assert.equal(again.duplicates, 1);
+});
+
+test('un doublon dans le même lot n\'est écrit qu\'une fois', async (t) => {
+  const ctx = await start(); t.after(ctx.stop);
+  const e = ev();
+  const r = await (await post(ctx, { events: [e, e] })).json();
+  assert.deepEqual([r.accepted, r.duplicates], [1, 1]);
 });
