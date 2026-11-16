@@ -2,7 +2,7 @@ import { WebSocketServer } from 'ws';
 
 /** Canal temps réel : un client s'abonne à une commande via /ws?order=<id>. */
 export function attachRealtime(server) {
-  const wss = new WebSocketServer({ noServer: true });
+  const wss = new WebSocketServer({ noServer: true, maxPayload: 1024 });
   const rooms = new Map(); // order_id -> Set<ws>
 
   server.on('upgrade', (req, socket, head) => {
@@ -15,6 +15,8 @@ export function attachRealtime(server) {
     wss.handleUpgrade(req, socket, head, (ws) => {
       if (!rooms.has(order)) rooms.set(order, new Set());
       rooms.get(order).add(ws);
+      ws.on('message', () => ws.close(1003, 'no incoming messages expected')); // canal à sens unique
+      ws.on('error', () => ws.terminate());
       ws.on('close', () => {
         rooms.get(order)?.delete(ws);
         if (!rooms.get(order)?.size) rooms.delete(order);

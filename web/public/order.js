@@ -2,8 +2,11 @@
 const id = new URLSearchParams(location.search).get('id');
 const el = document.getElementById('order-status');
 
+let confirmed = false;
 function show(order) {
-  el.textContent = order.status === 'paid' ? 'Payment confirmed. Thank you!' : 'Waiting for confirmation...';
+  if (confirmed) return; // le rattrapage HTTP peut arriver après le message WebSocket : jamais de retour en arrière
+  confirmed = order.status === 'paid';
+  el.textContent = confirmed ? 'Payment confirmed. Thank you!' : 'Waiting for confirmation...';
 }
 
 function connect() {

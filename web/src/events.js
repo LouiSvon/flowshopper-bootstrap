@@ -53,19 +53,23 @@ export class EventStore {
       const e = validateBatch.errors[0];
       return { ok: false, error: `${e.instancePath || '/'} ${e.message}` };
     }
+    // Un événement au produit inconnu est écarté seul : il ne fait pas perdre le reste du lot.
+    const valid = body.events.filter((ev) => !(ev.product_id && knownProductIds && !knownProductIds.has(ev.product_id)));
+    const rejected = body.events.length - valid.length;
+    if (!valid.length) return { ok: false, error: 'unknown product_id' };
     const fresh = [];
-    for (const ev of body.events) {
-      if (ev.product_id && knownProductIds && !knownProductIds.has(ev.product_id)) {
-        return { ok: false, error: `unknown product_id ${ev.product_id}` };
-      }
-      if (this.seen.has(ev.event_id)) continue;
-      this.seen.add(ev.event_id);
+    const inBatch = new Set();
+    for (const ev of valid) {
+      if (this.seen.has(ev.event_id) || inBatch.has(ev.event_id)) continue;
+      inBatch.add(ev.event_id);
       fresh.push(ev);
     }
     if (fresh.length) {
       const received_at = new Date().toISOString();
+      // On n'enregistre "vu" qu'après l'écriture réussie : un échec disque laisse le client renvoyer le lot.
       appendFileSync(this.file, fresh.map((e) => JSON.stringify({ ...e, received_at })).join('\n') + '\n');
+      for (const e of fresh) this.seen.add(e.event_id);
     }
-    return { ok: true, accepted: fresh.length, duplicates: body.events.length - fresh.length };
+    return { ok: true, accepted: fresh.length, duplicates: valid.length - fresh.length, rejected };
   }
 }

@@ -115,3 +115,21 @@ test('session Stripe : montants issus de la commande, order_id en métadonnée, 
   assert.deepEqual(sent.line_items[0], { quantity: 2, price_data: { currency: 'eur', unit_amount: 173, product_data: { name: 'Baguette' } } });
   assert.match(sent.success_url, /order\.html\?id=o-1$/);
 });
+
+test('webhook pour une commande inconnue : 404 et événement non consommé (Stripe relivrera)', async (t) => {
+  const ctx = await start(); t.after(ctx.stop);
+  const evt = paidEvent('commande-perdue', 'evt_retry');
+  assert.equal((await webhook(ctx, signedWebhook(evt))).status, 404);
+  const order = ctx.orders.create([{ product_id: 'FS-0001', quantity: 1 }], new Map(ctx.products.map((x) => [x.id, x])));
+  ctx.orders.orders.set('commande-perdue', { ...order, id: 'commande-perdue' }); // la commande réapparaît (redémarrage, relecture)
+  assert.equal((await webhook(ctx, signedWebhook(evt))).status, 200);
+  assert.equal(ctx.orders.get('commande-perdue').status, 'paid');
+});
+
+test('un client WebSocket qui envoie un message est déconnecté', async (t) => {
+  const ctx = await start(); t.after(ctx.stop);
+  const { ws } = await subscribe(ctx, 'o-1');
+  ws.send('x');
+  const [code] = await once(ws, 'close');
+  assert.equal(code, 1003);
+});

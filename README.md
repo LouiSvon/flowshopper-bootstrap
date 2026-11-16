@@ -53,7 +53,7 @@ Ouvrez deux fois la page de commande (`/order.html?id=<order_id>`), payez avec l
 
 ## Ce qui est vérifié, ce qui ne l'est pas
 
-Vérifié automatiquement : notebook exécuté sans erreur ni warning, 17 tests unitaires, 4 tests e2e sur Pixel 5 dont axe-core (WCAG 2.2 AA),
+Vérifié automatiquement : notebook exécuté sans erreur (les faux warnings `matmul` de numpy sous macOS sont filtrés, les résultats sont protégés par des `assert np.isfinite`), 21 tests unitaires, 4 tests e2e sur Pixel 5 dont axe-core (WCAG 2.2 AA),
 contrat OpenAPI valide.
 Non vérifié : paiement Stripe réel de bout en bout, lecteur d'écran (axe ne remplace pas un test humain), CI sur GitHub tant
 qu'une PR ne l'a pas exécutée, et le C1 (travail d'équipe).
