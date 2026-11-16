@@ -8,8 +8,8 @@
   },
   "scripts": {
     "start": "node src/server.js",
-    "test": "node --test test/unit/",
-    "coverage": "c8 --reporter=text --reporter=lcov --check-coverage --lines=70 node --test test/unit/",
+    "test": "node --test \"test/unit/**/*.test.js\"",
+    "coverage": "c8 --reporter=text --reporter=lcov --check-coverage --lines=70 node --test \"test/unit/**/*.test.js\"",
     "test:e2e": "playwright test",
     "test:all": "npm run coverage && npm run test:e2e"
   },
